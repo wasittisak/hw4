@@ -143,3 +143,6 @@ add chain=virus protocol=tcp dst-port=139 action=drop comment="Drop WannaCrypt"Â
 OVPN
 https://pantip.com/topic/37078780
 https://www.micu.eu/ovpn-server/
+
+FreeSSL
+https://www.micu.eu/ssl-certificate/
