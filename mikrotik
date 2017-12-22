@@ -1,0 +1,142 @@
+Firewall Script
+
+
+/ip firewall filteradd chain=forward connection-state=invalid \ action=drop comment="drop invalid connections" 
+add chain=forward connection-state=established action=accept \ comment="allow already established connections" 
+add chain=forward connection-state=related action=accept \ comment="allow related connections"
+
+****************************************************************************************************************************************************************************************
+Drop port scanners
+/ip firewall filter
+add chain=input protocol=tcp psd=21,3s,3,1 action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="Port scanners to list " disabled=no
+add chain=input protocol=tcp tcp-flags=fin,!syn,!rst,!psh,!ack,!urg action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="NMAP FIN Stealth scan"
+add chain=input protocol=tcp tcp-flags=fin,syn action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="SYN/FIN scan"
+add chain=input protocol=tcp tcp-flags=syn,rst action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="SYN/RST scan"
+add chain=input protocol=tcp tcp-flags=fin,psh,urg,!syn,!rst,!ack action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="FIN/PSH/URG scan"
+add chain=input protocol=tcp tcp-flags=fin,syn,rst,psh,ack,urg action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="ALL/ALL scan"
+add chain=input protocol=tcp tcp-flags=!fin,!syn,!rst,!psh,!ack,!urg action=add-src-to-address-list address-list="port scanners" address-list-timeout=2w comment="NMAP NULL scan"
+****************************************************************************************************************************************************************************************
+
+DoS attack protection
+Limit incoming connectionsAn IP address with too many connections can be added to a 'black-list' type address list for further blocking. 
+
+/ip firewall filter add chain=input protocol=tcp connection-limit=LIMIT,32  \ action=add-src-to-address-list  address-list=blocked-addr address-list-timeout=1d 
+
+****************************************************************************************************************************************************************************************
+
+Action tarpitInstead of simply dropping attacker's packets (with 'action=drop') router can capture and hold connections and with a powerful enough router it can slow the attacker down
+Action tarpitInstead of simply dropping attacker's packets (with 'action=drop') router can capture and hold connections and with a powerful enough router it can slow the attacker down
+
+/ip firewall filter add chain=input protocol=tcp src-address-list=blocked-addr \ connection-limit=3,32 action=tarpit 
+
+****************************************************************************************************************************************************************************************
+
+SYN filtering
+'syn limit=400' is a threshold, just enable rule in forward chain for syn packets to get dropped 
+
+/ip firewall filter add chain=forward protocol=tcp tcp-flags=syn connection-state=new \
+action=jump jump-target=SYN-Protect comment="SYN Flood protect" disabled=yes
+/ip firewall filter add chain=SYN-Protect protocol=tcp tcp-flags=syn limit=400,5 connection-state=new \
+action=accept comment="" disabled=no
+/ip firewall filter add chain=SYN-Protect protocol=tcp tcp-flags=syn connection-state=new \
+action=drop comment="" disabled=no
+
+For v6.x: 
+/ip settings set tcp-syncookies=yes
+
+For older RouterOS versions:
+/ip firewall connection tracking set tcp-syncookie=yes
+
+****************************************************************************************************************************************************************************************
+
+
+Block "bogon" IP addresses 
+
+/ip firewall filter
+add chain=forward src-address=0.0.0.0/8 action=drop  
+add chain=forward dst-address=0.0.0.0/8 action=drop  
+add chain=forward src-address=127.0.0.0/8 action=drop 
+add chain=forward dst-address=127.0.0.0/8 action=drop 
+add chain=forward src-address=224.0.0.0/3 action=drop 
+add chain=forward dst-address=224.0.0.0/3 action=drop 
+
+****************************************************************************************************************************************************************************************
+
+Create tcp chain and deny some tcp ports in it: 
+
+add chain=tcp protocol=tcp dst-port=69 action=drop comment="deny TFTP" 
+add chain=tcp protocol=tcp dst-port=111 action=drop comment="deny RPC portmapper"  
+add chain=tcp protocol=tcp dst-port=135 action=drop comment="deny RPC portmapper"  
+add chain=tcp protocol=tcp dst-port=137-139 action=drop comment="deny NBT"  
+add chain=tcp protocol=tcp dst-port=445 action=drop comment="deny cifs"  
+add chain=tcp protocol=tcp dst-port=2049 action=drop comment="deny NFS"  
+add chain=tcp protocol=tcp dst-port=12345-12346 action=drop comment="deny NetBus"  
+add chain=tcp protocol=tcp dst-port=20034 action=drop comment="deny NetBus"  
+add chain=tcp protocol=tcp dst-port=3133 action=drop comment="deny BackOriffice"  
+add chain=tcp protocol=tcp dst-port=67-68 action=drop comment="deny DHCP" 
+
+**************************************************************************************************************************************************************************************** 
+
+Deny udp ports in udp chain: 
+add chain=udp protocol=udp dst-port=69 action=drop comment="deny TFTP"  
+add chain=udp protocol=udp dst-port=111 action=drop comment="deny PRC portmapper"  
+add chain=udp protocol=udp dst-port=135 action=drop comment="deny PRC portmapper"  
+add chain=udp protocol=udp dst-port=137-139 action=drop comment="deny NBT"  
+add chain=udp protocol=udp dst-port=2049 action=drop comment="deny NFS"  
+add chain=udp protocol=udp dst-port=3133 action=drop comment="deny BackOriffice"  
+
+**************************************************************************************************************************************************************************************** 
+
+Allow only needed icmp codes in icmp chain: 
+
+add chain=icmp protocol=icmp icmp-options=0:0 action=accept comment="echo reply"
+add chain=icmp protocol=icmp icmp-options=3:0 action=accept comment="net unreachable"
+add chain=icmp protocol=icmp icmp-options=3:1 action=accept comment="host unreachable"
+add chain=icmp protocol=icmp icmp-options=3:4 action=accept comment="host unreachable fragmentation required"
+add chain=icmp protocol=icmp icmp-options=4:0 action=accept comment="allow source quench"
+add chain=icmp protocol=icmp icmp-options=8:0 action=accept comment="allow echo request"
+add chain=icmp protocol=icmp icmp-options=11:0 action=accept comment="allow time exceed"  
+add chain=icmp protocol=icmp icmp-options=12:0 action=accept comment="allow parameter bad"  
+add chain=icmp action=drop comment="deny all other types" 
+
+**************************************************************************************************************************************************************************************** 
+
+Block Port Virus
+
+/ip firewall filter
+add chain=virus protocol=tcp dst-port=135-139 action=drop comment="Drop Blaster Worm" 
+add chain=virus protocol=udp dst-port=135-139 action=drop comment="Drop Messenger Worm"
+add chain=virus protocol=tcp dst-port=445 action=drop comment="Drop Blaster Worm & WannaCrypt" 
+add chain=virus protocol=udp dst-port=445 action=drop comment="Drop Blaster Worm"
+add chain=virus protocol=tcp dst-port=593 action=drop comment="________" 
+add chain=virus protocol=tcp dst-port=1024-1030 action=drop comment="________" 
+add chain=virus protocol=tcp dst-port=1080 action=drop comment="Drop MyDoom" 
+add chain=virus protocol=tcp dst-port=1214 action=drop comment="________" 
+add chain=virus protocol=tcp dst-port=1363 action=drop comment="ndm requester" 
+add chain=virus protocol=tcp dst-port=1364 action=drop comment="ndm server" 
+add chain=virus protocol=tcp dst-port=1368 action=drop comment="screen cast" 
+add chain=virus protocol=tcp dst-port=1373 action=drop comment="hromgrafx" 
+add chain=virus protocol=tcp dst-port=1377 action=drop comment="cichlid" 
+add chain=virus protocol=tcp dst-port=1433-1434 action=drop comment="Worm" 
+add chain=virus protocol=tcp dst-port=2745 action=drop comment="Bagle Virus" 
+add chain=virus protocol=tcp dst-port=2283 action=drop comment="Drop Dumaru.Y" 
+add chain=virus protocol=tcp dst-port=2535 action=drop comment="Drop Beagle" 
+add chain=virus protocol=tcp dst-port=2745 action=drop comment="Drop Beagle.C-K" 
+add chain=virus protocol=tcp dst-port=3127-3128 action=drop comment="Drop MyDoom" 
+add chain=virus protocol=tcp dst-port=3410 action=drop comment="Drop Backdoor OptixPro"
+add chain=virus protocol=tcp dst-port=4444 action=drop comment="Worm" 
+add chain=virus protocol=udp dst-port=4444 action=drop comment="Worm" 
+add chain=virus protocol=tcp dst-port=5554 action=drop comment="Drop Sasser" 
+add chain=virus protocol=tcp dst-port=8866 action=drop comment="Drop Beagle.B" 
+add chain=virus protocol=tcp dst-port=9898 action=drop comment="Drop Dabber.A-B" 
+add chain=virus protocol=tcp dst-port=10000 action=drop comment="Drop Dumaru.Y" 
+add chain=virus protocol=tcp dst-port=10080 action=drop comment="Drop MyDoom.B" 
+add chain=virus protocol=tcp dst-port=12345 action=drop comment="Drop NetBus" 
+add chain=virus protocol=tcp dst-port=17300 action=drop comment="Drop Kuang2" 
+add chain=virus protocol=tcp dst-port=27374 action=drop comment="Drop SubSeven" 
+add chain=virus protocol=tcp dst-port=65506 action=drop comment="Drop PhatBot, Agobot, Gaobot"
+add chain=forward action=jump jump-target=virus comment="jump to the virus chain"
+add chain=virus protocol=tcp dst-port=139 action=drop comment="Drop WannaCrypt"    
+
+
+**************************************************************************************************************************************************************************************** 
